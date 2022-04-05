@@ -73,7 +73,7 @@ test "logger print plain" {
         .ctx = "", 
     };
     try logger.Print("hey there");
-    try std.testing.expectEqualStrings(arr.items, "DBG hey there\n");
+    try std.testing.expectEqualStrings("DBG hey there\n", arr.items);
 }
 
 test "logger print json" {
@@ -90,5 +90,50 @@ test "logger print json" {
     const output = 
         \\{"time":0,"level":"debug","message":"hey there"}
         ++ "\n";
-    try std.testing.expectEqualStrings(arr.items, output);
+    try std.testing.expectEqualStrings(output, arr.items);
+}
+
+test "logger print json" {
+    var arr = std.ArrayList(u8).init(test_allocator);
+    defer arr.deinit();
+    const writer = arr.writer();
+
+    const logMan = ziglog.LogManager(.debug, .testMode);
+    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
+        .w = writer, 
+        .ctx = "", 
+    };
+    try logger.Print("hey there");
+    const output = 
+        \\{"time":0,"level":"debug","message":"hey there"}
+        ++ "\n";
+    try std.testing.expectEqualStrings(output, arr.items);
+}
+
+test "logger event json" {
+    var arr = std.ArrayList(u8).init(test_allocator);
+    defer arr.deinit();
+    const writer = arr.writer();
+
+    const logMan = ziglog.LogManager(.debug, .testMode);
+    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
+        .w = writer, 
+        .ctx = "", 
+    };
+    var event = try logger.WithLevel(.debug);
+    try event.Add("Hey", "This is a field", .{});
+    try event.Add("Hey2", "This is also a field", .{});
+    try event.Msg("Here's my message");
+    const output = 
+        \\{"level":"debug",
+        ++
+        \\"Hey":"This is a field",
+        ++
+        \\"Hey2":"This is also a field",
+        ++
+        \\"message":"Here's my message",
+        ++
+        \\"time":0}
+        ++ "\n";
+    try std.testing.expectEqualStrings(output, arr.items);
 }

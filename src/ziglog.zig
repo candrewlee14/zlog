@@ -44,13 +44,68 @@ pub fn LogManager(
     return struct {
         pub fn Event(
             comptime writerType: type,
+            comptime fmtMode: FormatMode,
+            comptime logLevel: LevelType,
         ) type {
             return struct {
                 w: writerType,
-                buf: std.ArrayList(u8),
-                lvl: LevelType,
+                // buf: std.ArrayList(u8),
 
                 const Self = @This();
+                pub fn New(w: writerType) !Self {
+                    try w.writeAll(
+                       "{\"level\":\"" ++ logLevel.asText() ++ "\"," 
+                    );
+                    return Self{
+                        .w = w,
+                    };
+                }
+
+                /// Add a key:value pair to this event
+                pub fn Add(
+                    self: *Self, 
+                    key: []const u8, 
+                    comptime valFmtStr: []const u8, 
+                    args: anytype
+                ) !void {
+                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                        return;
+                    };
+                    switch (fmtMode) {
+                        .json => {
+                            try self.w.print("\"{s}\":\"", .{key});
+                            try self.w.print(valFmtStr, args);
+                            try self.w.print("\",", .{});
+                        },
+                        else => unreachable, // TODO: implement
+                    }
+                }
+                /// Send this event to the writer with no message.
+                /// The event should then be discarded.
+                pub fn Send(self: *Self) !void {
+                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                        return;
+                    };
+                    switch (fmtMode) {
+                        .json => {
+                            try self.w.print("\"time\":{}}}\n", .{getTime()});
+                        },
+                        else => unreachable, // TODO: implement
+                    }
+                }
+                /// Send this event to the writer with the given message.
+                pub fn Msg(self: *Self, msg: []const u8) !void {
+                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                        return;
+                    };
+                    switch (fmtMode) {
+                        .json => {
+                            try self.Add("message", "{s}", .{msg});
+                        },
+                        else => unreachable, // TODO: implement
+                    }
+                    try self.Send();
+                }
             };
         }
 
@@ -67,15 +122,22 @@ pub fn LogManager(
             };
         }
 
-        const FormatMode = enum {
+        pub const FormatMode = enum {
             json,
             pretty,
             plain,
         };
 
+        fn getTime() i64 {
+            return switch (timeFormat) {
+                .unixSecs => std.time.timestamp(),
+                .testMode => 0,
+            };
+        }
+
         pub fn Logger(
             comptime writerType: type, 
-            comptime fmMode: FormatMode,
+            comptime fmtMode: FormatMode,
             comptime logLevel: LevelType,
         ) type {
             return struct {
@@ -89,21 +151,24 @@ pub fn LogManager(
                 pub fn Level(
                     self: *Self, 
                     comptime lvl: LevelType,
-                ) Logger(writerType, fmMode, lvl) {
-                    return Logger(writerType, fmMode, lvl){
+                ) Logger(writerType, fmtMode, lvl) {
+                    return Logger(writerType, fmtMode, lvl){
                         .w = self.w,
                         .ctx = self.ctx,
                     };
+                }
+                pub fn WithLevel(
+                    self: *Self, 
+                    comptime lvl: LevelType
+                ) !Event(writerType, fmtMode, lvl) {
+                    return Event(writerType, fmtMode, lvl).New(self.w);
                 }
                 pub fn Print(self: *Self, msg: []const u8) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return;
                     };
-                    const timeVal = switch (timeFormat) {
-                        .unixSecs => std.time.timestamp(),
-                        .testMode => 0,
-                    };
-                    switch (fmMode) {
+                    const timeVal = getTime();
+                    switch (fmtMode) {
                         .json => {
                             try self.w.print(
                                 "{{" ++
