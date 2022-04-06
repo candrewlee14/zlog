@@ -110,7 +110,7 @@ test "logger print json" {
     try std.testing.expectEqualStrings(output, arr.items);
 }
 
-test "logger event json" {
+test "logger event json str" {
     var arr = std.ArrayList(u8).init(test_allocator);
     defer arr.deinit();
     const writer = arr.writer();
@@ -121,8 +121,8 @@ test "logger event json" {
         .ctx = "", 
     };
     var event = try logger.withLevel(.debug);
-    try event.add("Hey", "This is a field", .{});
-    try event.add("Hey2", "This is also a field", .{});
+    try event.str("Hey", "This is a field");
+    try event.str("Hey2", "This is also a field");
     try event.msg("Here's my message");
     const output = 
         \\{"time":0,
@@ -132,6 +132,44 @@ test "logger event json" {
         \\"Hey":"This is a field",
         ++
         \\"Hey2":"This is also a field",
+        ++
+        \\"message":"Here's my message"}
+        ++ "\n";
+    try std.testing.expectEqualStrings(output, arr.items);
+}
+
+test "logger event json num" {
+    var arr = std.ArrayList(u8).init(test_allocator);
+    defer arr.deinit();
+    const writer = arr.writer();
+
+    const logMan = ziglog.LogManager(.debug, .testMode);
+    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
+        .w = writer, 
+        .ctx = "", 
+    };
+    var i : u8 = 100 / 2;
+    var event = try logger.withLevel(.debug);
+    try event.str("Hey", "This is a field");
+    try event.str("Hey2", "This is also a field");
+    try event.num("Value1", 10);
+    try event.num("Value2", 199.2);
+    try event.num("Value3", i);
+    try event.msg("Here's my message");
+    const output = 
+        \\{"time":0,
+        ++
+        \\"level":"debug",
+        ++
+        \\"Hey":"This is a field",
+        ++
+        \\"Hey2":"This is also a field",
+        ++
+        \\"Value1":10,
+        ++
+        \\"Value2":199.2,
+        ++
+        \\"Value3":50,
         ++
         \\"message":"Here's my message"}
         ++ "\n";

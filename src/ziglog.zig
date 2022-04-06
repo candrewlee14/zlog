@@ -65,18 +65,10 @@ pub fn LogManager(
                     var timeVal = getTime();
                     switch (fmtMode) { 
                         .json => {
-                            // try w.print(
-                            //    "{\"time\": {}",
-                            //    .{timeVal}
-                            // );
                             try w.writeAll("{");
                             try w.print("\"time\":{}", .{timeVal});
                             try w.writeAll(
-                               ",\"level\":\"" 
-                               ++
-                               logLevel.asText()
-                               ++
-                               "\"",
+                               ",\"level\":\"" ++ logLevel.asText() ++ "\"",
                             );
                         },
                         .pretty => {
@@ -94,7 +86,7 @@ pub fn LogManager(
                         .plain => {
                             try w.print("{} ", .{timeVal});
                             try w.writeAll(levelSmallStr(logLevel));
-                        }
+                        },
                     }
                     return Self{
                         .w = w,
@@ -103,10 +95,12 @@ pub fn LogManager(
                 }
 
                 /// Add a key:value pair to this event
-                pub fn add(
+                /// isNum will remove the quotes around JSON in the case of a num
+                fn add(
                     self: *Self, 
                     key: []const u8, 
                     comptime valFmtStr: []const u8, 
+                    comptime isNum: bool,
                     args: anytype
                 ) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
@@ -114,14 +108,32 @@ pub fn LogManager(
                     };
                     switch (fmtMode) {
                         .json => {
-                            try self.w.print(",\"{s}\":\"", .{key});
+                            try self.w.print(",\"{s}\":", .{key});
+                            if (!isNum) { try self.w.writeAll("\""); }
                             try self.w.print(valFmtStr, args);
-                            try self.w.writeAll("\"");
+                            if (!isNum) { try self.w.writeAll("\""); }
                         },
-                        .plain, .pretty => {
+                        .plain => {
                             try self.w.print(" {s}=", .{key});
                             try self.w.print(valFmtStr, args);
-                        }
+                        },
+                        .pretty => {
+                            try self.w.print(" \x1b[90m{s}=\x1b[0m", .{key});
+                            try self.w.print(valFmtStr, args);
+                        },
+                    }
+                }
+                pub fn str(self: *Self, key: []const u8, val: []const u8) !void {
+                    try self.add(key, "{s}", false, .{val});
+                }
+                pub fn num(self: *Self, key: []const u8, val: anytype) !void {
+                    const valTinfo = @typeInfo(@TypeOf(val));
+                    switch (valTinfo) {
+                        .Int, .Float, .ComptimeInt, .ComptimeFloat => 
+                            try self.add(key, "{d}", true, .{val}),
+                        else => @compileError(
+                            "Expected int or float value, instead got " 
+                            ++ @typeName(@TypeOf(val))),
                     }
                 }
                 /// Send this event to the writer with no message.
@@ -136,7 +148,7 @@ pub fn LogManager(
                         },
                         .plain, .pretty => {
                             try self.w.writeAll("\n");
-                        }
+                        },
                     }
                 }
                 /// Send this event to the writer with the given message.
@@ -146,7 +158,7 @@ pub fn LogManager(
                     };
                     switch (fmtMode) {
                         .json, .plain, .pretty => {
-                            try self.add("message", "{s}", .{msgStr});
+                            try self.str("message", msgStr);
                         },
                     }
                     try self.send();
