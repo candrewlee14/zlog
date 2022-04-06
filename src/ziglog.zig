@@ -42,6 +42,13 @@ pub fn LogManager(
     comptime timeFormat: TimeFormat,
 ) type {
     return struct {
+        fn getTime() i128 {
+            return switch (timeFormat) {
+                .unixSecs => std.time.timestamp(),
+                .testMode => 0,
+            };
+        }
+
         pub fn Event(
             comptime writerType: type,
             comptime fmtMode: FormatMode,
@@ -49,20 +56,54 @@ pub fn LogManager(
         ) type {
             return struct {
                 w: writerType,
+                timeVal: i128,
                 // buf: std.ArrayList(u8),
 
                 const Self = @This();
+                // Creates new Event with current time
                 pub fn New(w: writerType) !Self {
-                    try w.writeAll(
-                       "{\"level\":\"" ++ logLevel.asText() ++ "\"," 
-                    );
+                    var timeVal = getTime();
+                    switch (fmtMode) { 
+                        .json => {
+                            // try w.print(
+                            //    "{\"time\": {}",
+                            //    .{timeVal}
+                            // );
+                            try w.writeAll("{");
+                            try w.print("\"time\":{}", .{timeVal});
+                            try w.writeAll(
+                               ",\"level\":\"" 
+                               ++
+                               logLevel.asText()
+                               ++
+                               "\"",
+                            );
+                        },
+                        .pretty => {
+                            try w.print("\x1b[90m{}\x1b[0m ", .{timeVal});
+                            const lvlStr = switch(logLevel) {
+                                .panic, .fatal, .err => "\x1b[31m",
+                                .warn => "\x1b[33m",
+                                .info => "\x1b[32m",
+                                .debug => "\x1b[35m",
+                                .trace => "\x1b[36m",
+                                else => "",
+                            } ++ levelSmallStr(logLevel) ++ "\x1b[0m";
+                            try w.writeAll(lvlStr);
+                        },
+                        .plain => {
+                            try w.print("{} ", .{timeVal});
+                            try w.writeAll(levelSmallStr(logLevel));
+                        }
+                    }
                     return Self{
                         .w = w,
+                        .timeVal = timeVal,
                     };
                 }
 
                 /// Add a key:value pair to this event
-                pub fn Add(
+                pub fn add(
                     self: *Self, 
                     key: []const u8, 
                     comptime valFmtStr: []const u8, 
@@ -73,38 +114,42 @@ pub fn LogManager(
                     };
                     switch (fmtMode) {
                         .json => {
-                            try self.w.print("\"{s}\":\"", .{key});
+                            try self.w.print(",\"{s}\":\"", .{key});
                             try self.w.print(valFmtStr, args);
-                            try self.w.print("\",", .{});
+                            try self.w.writeAll("\"");
                         },
-                        else => unreachable, // TODO: implement
+                        .plain, .pretty => {
+                            try self.w.print(" {s}=", .{key});
+                            try self.w.print(valFmtStr, args);
+                        }
                     }
                 }
                 /// Send this event to the writer with no message.
                 /// The event should then be discarded.
-                pub fn Send(self: *Self) !void {
+                pub fn send(self: *Self) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return;
                     };
                     switch (fmtMode) {
                         .json => {
-                            try self.w.print("\"time\":{}}}\n", .{getTime()});
+                            try self.w.writeAll("}\n");
                         },
-                        else => unreachable, // TODO: implement
+                        .plain, .pretty => {
+                            try self.w.writeAll("\n");
+                        }
                     }
                 }
                 /// Send this event to the writer with the given message.
-                pub fn Msg(self: *Self, msg: []const u8) !void {
+                pub fn msg(self: *Self, msgStr: []const u8) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return;
                     };
                     switch (fmtMode) {
-                        .json => {
-                            try self.Add("message", "{s}", .{msg});
+                        .json, .plain, .pretty => {
+                            try self.add("message", "{s}", .{msgStr});
                         },
-                        else => unreachable, // TODO: implement
                     }
-                    try self.Send();
+                    try self.send();
                 }
             };
         }
@@ -128,13 +173,6 @@ pub fn LogManager(
             plain,
         };
 
-        fn getTime() i64 {
-            return switch (timeFormat) {
-                .unixSecs => std.time.timestamp(),
-                .testMode => 0,
-            };
-        }
-
         pub fn Logger(
             comptime writerType: type, 
             comptime fmtMode: FormatMode,
@@ -142,13 +180,13 @@ pub fn LogManager(
         ) type {
             return struct {
                 w: writerType,
-                ctx: []u8,
+                ctx: []const u8,
 
                 const Self = @This();
                 pub fn getLevel() LevelType {
                     return logLevel;
                 }
-                pub fn Level(
+                pub fn level(
                     self: *Self, 
                     comptime lvl: LevelType,
                 ) Logger(writerType, fmtMode, lvl) {
@@ -157,52 +195,18 @@ pub fn LogManager(
                         .ctx = self.ctx,
                     };
                 }
-                pub fn WithLevel(
+                pub fn withLevel(
                     self: *Self, 
                     comptime lvl: LevelType
                 ) !Event(writerType, fmtMode, lvl) {
                     return Event(writerType, fmtMode, lvl).New(self.w);
                 }
-                pub fn Print(self: *Self, msg: []const u8) !void {
+                pub fn print(self: *Self, msg: []const u8) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return;
                     };
-                    const timeVal = getTime();
-                    switch (fmtMode) {
-                        .json => {
-                            try self.w.print(
-                                "{{" ++
-                                "\"time\":{}," ++
-                                "\"level\":\"{s}\"," ++
-                                "\"message\":\"{s}\"" ++
-                                "}}",
-                                .{timeVal, logLevel.asText(), msg});
-                        },
-                        .plain => {
-                            try self.w.writeAll(
-                                levelSmallStr(logLevel) 
-                                ++ " "
-                            );
-                            try self.w.writeAll(msg);
-                        },
-                        .pretty => {
-                            const colorPrefix = switch(logLevel) {
-                                .panic, .fatal, .err => "\x1b[31m",
-                                .warn => "\x1b[33m",
-                                .info => "\x1b[32m",
-                                .debug => "\x1b[35m",
-                                .trace => "\x1b[36m",
-                                else => "",
-                            };
-                            try self.w.writeAll(
-                                colorPrefix
-                                ++ levelSmallStr(logLevel)
-                                ++ "\x1b[0m "
-                            );
-                            try self.w.writeAll(msg);
-                        },
-                    }
-                    return self.w.writeAll("\n");
+                    var event = try self.withLevel(logLevel);
+                    try event.msg(msg);
                 }
             };
         }

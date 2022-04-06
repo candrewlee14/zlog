@@ -20,7 +20,7 @@ var test_allocator = std.testing.allocator;
 //         } ++ levelSmallStr(level) ++ "\x1b[0m " 
 //         ++ scope_prefix;
 
-//     // Print the message to stderr, silently ignoring any errors
+//     // print the message to stderr, silently ignoring any errors
 //     std.debug.getStderrMutex().lock();
 //     defer std.debug.getStderrMutex().unlock();
 //     const stderr = std.io.getStdErr().writer();
@@ -35,15 +35,15 @@ pub fn main() anyerror!void {
         .w = writer, 
         .ctx = "", 
     };
-    try logger.Print("hey there");
+    try logger.print("hey there");
 
     var logger2 = logMan.Logger(@TypeOf(writer), .pretty, .debug){
         .w = writer, 
         .ctx = "", 
     };
-    try logger2.Print("hey there");
-    try logger2.Level(.warn)
-        .Print("look, a warning!");
+    try logger2.print("hey there");
+    try logger2.level(.warn)
+        .print("look, a warning!");
 
 }
 
@@ -58,7 +58,7 @@ test "logger off" {
         .ctx = "", 
     };
     // This won't be printed
-    try logger.Print("hey there");
+    try logger.print("hey there");
     try std.testing.expect(arr.items.len == 0);
 }
 
@@ -72,8 +72,8 @@ test "logger print plain" {
         .w = writer, 
         .ctx = "", 
     };
-    try logger.Print("hey there");
-    try std.testing.expectEqualStrings("DBG hey there\n", arr.items);
+    try logger.print("hey there");
+    try std.testing.expectEqualStrings("0 DBG message=hey there\n", arr.items);
 }
 
 test "logger print json" {
@@ -86,7 +86,7 @@ test "logger print json" {
         .w = writer, 
         .ctx = "", 
     };
-    try logger.Print("hey there");
+    try logger.print("hey there");
     const output = 
         \\{"time":0,"level":"debug","message":"hey there"}
         ++ "\n";
@@ -103,7 +103,7 @@ test "logger print json" {
         .w = writer, 
         .ctx = "", 
     };
-    try logger.Print("hey there");
+    try logger.print("hey there");
     const output = 
         \\{"time":0,"level":"debug","message":"hey there"}
         ++ "\n";
@@ -120,20 +120,20 @@ test "logger event json" {
         .w = writer, 
         .ctx = "", 
     };
-    var event = try logger.WithLevel(.debug);
-    try event.Add("Hey", "This is a field", .{});
-    try event.Add("Hey2", "This is also a field", .{});
-    try event.Msg("Here's my message");
+    var event = try logger.withLevel(.debug);
+    try event.add("Hey", "This is a field", .{});
+    try event.add("Hey2", "This is also a field", .{});
+    try event.msg("Here's my message");
     const output = 
-        \\{"level":"debug",
+        \\{"time":0,
+        ++
+        \\"level":"debug",
         ++
         \\"Hey":"This is a field",
         ++
         \\"Hey2":"This is also a field",
         ++
-        \\"message":"Here's my message",
-        ++
-        \\"time":0}
+        \\"message":"Here's my message"}
         ++ "\n";
     try std.testing.expectEqualStrings(output, arr.items);
 }
