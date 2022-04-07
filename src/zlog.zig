@@ -92,6 +92,7 @@ pub const LogConfig = struct {
     }
 };
 
+
 pub fn LogManager(
     comptime conf: LogConfig,
 ) type {
@@ -120,11 +121,12 @@ pub fn LogManager(
                     var newEvent = Self{
                         .w = writer,
                         .timeVal = timeVal,
-                        .buf = try BoundedStr(conf.eventBufSize).init(),
+                        .buf = undefined,
                     };
                     comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return newEvent;
                     };
+                    newEvent.buf = try BoundedStr(conf.eventBufSize).init();
                     const w = newEvent.buf.writer();
                     switch (fmtMode) { 
                         .json => {
@@ -156,6 +158,7 @@ pub fn LogManager(
 
                 /// Add a key:value pair to this event
                 /// isNum will remove the quotes around JSON in the case of a num
+                /// NOTE: must use msg, msgf, or send methods to dispatch log
                 fn add(
                     self: *Self, 
                     key: []const u8, 
@@ -185,9 +188,20 @@ pub fn LogManager(
                         },
                     }
                 }
+                /// Add key:str pair to event.
+                /// NOTE: must use msg, msgf, or send methods to dispatch log
                 pub fn str(self: *Self, key: []const u8, val: []const u8) !void {
                     try self.add(key, "{s}", false, .{val});
                 }
+                /// Add key:str pair to event using format string with value struct.
+                pub fn strf(self: *Self, key: []const u8, 
+                    comptime fmtStr: []const u8, 
+                    val: anytype
+                ) !void {
+                    try self.add(key, fmtStr, false, val);
+                }
+                /// Add key:num pair to event.
+                /// NOTE: must use msg, msgf, or send methods to dispatch log
                 pub fn num(self: *Self, key: []const u8, val: anytype) !void {
                     const valTinfo = @typeInfo(@TypeOf(val));
                     switch (comptime valTinfo) {
@@ -219,16 +233,19 @@ pub fn LogManager(
                     try self.str("message", msgStr);
                     try self.send();
                 }
+                /// Send this event to the writer with a message from 
+                /// a format string and args struct
                 pub fn msgf(self: *Self, 
                     comptime fmtStr: []const u8, 
                     args: anytype
                 ) !void {
-                    try self.add("message", fmtStr, false, args);
+                    try self.strf("message", fmtStr, args);
                     try self.send();
                 }
             };
         }
 
+        /// Short string for pretty printing the log level
         fn levelSmallStr(lvl: LevelType) []const u8 {
             return switch(lvl) {
                 .off => "OFF",
@@ -242,12 +259,14 @@ pub fn LogManager(
             };
         }
 
+        /// Mode for log formats
         pub const FormatMode = enum {
             json,
             pretty,
             plain,
         };
 
+        /// Create a logger
         pub fn Logger(
             comptime writerType: type, 
             comptime fmtMode: FormatMode,
@@ -255,27 +274,39 @@ pub fn LogManager(
         ) type {
             return struct {
                 w: writerType,
-                ctx: []const u8,
+                ctx: BoundedStr(conf.eventBufSize),
 
                 const Self = @This();
+                pub fn new(w: writerType) !Self {
+                    return Self{
+                        .w = w,
+                        .ctx = try BoundedStr(conf.eventBufSize).init(),
+                    };
+                }
+                /// Return current logger log level
                 pub fn getLevel() LevelType {
                     return logLevel;
                 }
+                /// Returns a sublogger at the given log level
                 pub fn level(
                     self: *Self, 
                     comptime lvl: LevelType,
-                ) Logger(writerType, fmtMode, lvl) {
+                ) !Logger(writerType, fmtMode, lvl) {
+                    var newCtx = try BoundedStr(conf.eventBufSize).init();
+                    try newCtx.writer().writeAll(self.ctx.data.constSlice());
                     return Logger(writerType, fmtMode, lvl){
                         .w = self.w,
-                        .ctx = self.ctx,
+                        .ctx = newCtx,
                     };
                 }
+                /// Returns an event that at the given log level 
                 pub fn withLevel(
                     self: *Self, 
                     comptime lvl: LevelType
                 ) !Event(writerType, fmtMode, lvl) {
                     return Event(writerType, fmtMode, lvl).new(self.w);
                 }
+                /// Log a message at this logger's level
                 pub fn print(self: *Self, msg: []const u8) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return;
@@ -297,13 +328,10 @@ test "logger off" {
 
     const conf = comptime LogConfig.off();
     const logMan = LogManager(conf);
-    var logger = logMan.Logger(@TypeOf(writer), .plain, .debug){
-        .w = writer, 
-        .ctx = "", 
-    };
+    var logger = try logMan.Logger(@TypeOf(writer), .plain, .debug).new(writer);
     // This won't be printed
     try logger.print("hey there");
-    try std.testing.expect(arr.items.len == 0);
+    try std.testing.expectEqualStrings("", arr.items);
 }
 
 test "logger print plain" {
@@ -313,10 +341,7 @@ test "logger print plain" {
 
     const conf = comptime LogConfig.testMode();
     const logMan = LogManager(conf);
-    var logger = logMan.Logger(@TypeOf(writer), .plain, .debug){
-        .w = writer, 
-        .ctx = "", 
-    };
+    var logger = try logMan.Logger(@TypeOf(writer), .plain, .debug).new(writer);
     try logger.print("hey there");
     try std.testing.expectEqualStrings("0 DBG message=hey there\n", arr.items);
 }
@@ -328,10 +353,7 @@ test "logger print json" {
 
     const conf = comptime LogConfig.testMode();
     const logMan = LogManager(conf);
-    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
-        .w = writer, 
-        .ctx = "", 
-    };
+    var logger = try logMan.Logger(@TypeOf(writer), .json, .debug).new(writer);
     try logger.print("hey there");
     const output = 
         \\{"time":0,"level":"debug","message":"hey there"}
@@ -346,10 +368,7 @@ test "logger event json str" {
 
     const conf = comptime LogConfig.testMode();
     const logMan = LogManager(conf);
-    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
-        .w = writer, 
-        .ctx = "", 
-    };
+    var logger = try logMan.Logger(@TypeOf(writer), .json, .debug).new(writer);
     var event = try logger.withLevel(.debug);
     try event.str("Hey", "This is a field");
     try event.str("Hey2", "This is also a field");
@@ -365,10 +384,7 @@ test "logger event json str" {
 
     const conf = comptime LogConfig.testMode();
     const logMan = LogManager(conf);
-    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
-        .w = writer, 
-        .ctx = "", 
-    };
+    var logger = try logMan.Logger(@TypeOf(writer), .json, .debug).new(writer);
     var event = try logger.withLevel(.debug);
     try event.str("Hey", "This is a field");
     try event.str("Hey2", "This is also a field");
@@ -393,10 +409,7 @@ test "logger event json num" {
     const writer = arr.writer();
     const conf = comptime LogConfig.testMode();
     const logMan = LogManager(conf);
-    var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
-        .w = writer, 
-        .ctx = "", 
-    };
+    var logger = try logMan.Logger(@TypeOf(writer), .json, .debug).new(writer);
     var i : u8 = 100 / 2;
     var event = try logger.withLevel(.debug);
     try event.str("Hey", "This is a field");
