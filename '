@@ -36,30 +36,6 @@ const LevelType = enum {
     }
 };
 
-pub fn BoundedStr(comptime bufSize: usize) type {
-    return struct {
-        const Self = @This();
-        data: std.BoundedArray(u8, bufSize),
-
-        const Writer = std.io.Writer(
-            *Self,
-            error{EndOfBuffer},
-            appendWrite,
-        );
-        pub fn init() !Self {
-            return Self{
-                .data = try std.BoundedArray(u8, bufSize).init(0),
-            };
-        }
-        fn appendWrite(self: *Self, str: []const u8) error{EndOfBuffer}!usize {
-             self.data.appendSlice(str) catch return error.EndOfBuffer;
-             return str.len;
-        }
-        fn writer(self: *Self) Writer {
-            return .{ .context = self };
-        }
-    };
-}
 
 pub fn LogManager(
     comptime globalLogLevel: LevelType,
@@ -81,22 +57,30 @@ pub fn LogManager(
         ) type {
             return struct {
                 w: writerType,
-                buf: BoundedStr(bufSize),
+                buf: [bufSize]u8,
                 timeVal: i128,
+                content: std.ArrayList(u8),
+                fba: std.heap.FixedBufferAllocator,
 
                 const Self = @This();
                 // Creates new Event with current time
-                fn new(writer: writerType) !Self {
-                    const timeVal = getTime();
+                pub fn New(writer: writerType) !Self {
                     var newEvent = Self{
                         .w = writer,
-                        .timeVal = timeVal,
-                        .buf = try BoundedStr(bufSize).init(),
+                        .timeVal = undefined,
+                        .buf = undefined,
+                        .content = undefined,
+                        .fba = undefined,
                     };
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return newEvent;
                     };
-                    const w = newEvent.buf.writer();
+                    const timeVal = getTime();
+                    newEvent.timeVal = timeVal;
+                    std.debug.print("Buf Size: {}\n", .{newEvent.buf.len});
+                    newEvent.fba = std.heap.FixedBufferAllocator.init(&newEvent.buf);
+                    newEvent.content = std.ArrayList(u8).init(newEvent.fba.allocator());
+                    const w = newEvent.content.writer();
                     switch (fmtMode) { 
                         .json => {
                             try w.writeAll("{");
@@ -137,7 +121,9 @@ pub fn LogManager(
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return;
                     };
-                    const w = self.buf.writer();
+                    const w = self.content.writer();
+                    std.debug.print("Hey {} {s}\n", 
+                        .{self.content.items.len, self.buf});
                     // const w = self.w;
                     switch (fmtMode) {
                         .json => {
@@ -175,7 +161,7 @@ pub fn LogManager(
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
                         return;
                     };
-                    try self.w.writeAll(self.buf.data.constSlice());
+                    try self.w.writeAll(self.content.items);
                     switch (fmtMode) {
                         .json => {
                             try self.w.writeAll("}\n");
@@ -245,7 +231,7 @@ pub fn LogManager(
                     self: *Self, 
                     comptime lvl: LevelType
                 ) !Event(writerType, fmtMode, lvl, 1000) {
-                    return Event(writerType, fmtMode, lvl, 1000).new(self.w);
+                    return Event(writerType, fmtMode, lvl, 1000).New(self.w);
                 }
                 pub fn print(self: *Self, msg: []const u8) !void {
                     comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){

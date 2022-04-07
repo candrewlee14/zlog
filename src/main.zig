@@ -93,7 +93,7 @@ test "logger print json" {
     try std.testing.expectEqualStrings(output, arr.items);
 }
 
-test "logger print json" {
+test "logger event json str" {
     var arr = std.ArrayList(u8).init(test_allocator);
     defer arr.deinit();
     const writer = arr.writer();
@@ -103,10 +103,11 @@ test "logger print json" {
         .w = writer, 
         .ctx = "", 
     };
-    try logger.print("hey there");
-    const output = 
-        \\{"time":0,"level":"debug","message":"hey there"}
-        ++ "\n";
+    var event = try logger.withLevel(.debug);
+    try event.str("Hey", "This is a field");
+    try event.str("Hey2", "This is also a field");
+    // Nothing should output because neither msg("blah") nor send() was called
+    const output = "";
     try std.testing.expectEqualStrings(output, arr.items);
 }
 
