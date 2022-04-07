@@ -30,7 +30,8 @@ var test_allocator = std.testing.allocator;
 
 pub fn main() anyerror!void {
     const writer = std.io.getStdErr().writer();
-    const logMan = ziglog.LogManager(.debug, .unixSecs);
+    const conf = comptime ziglog.LogConfig.testMode();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
         .w = writer, 
         .ctx = "", 
@@ -52,7 +53,8 @@ test "logger off" {
     defer arr.deinit();
     const writer = arr.writer();
 
-    const logMan = ziglog.LogManager(.off, .testMode);
+    const conf = comptime ziglog.LogConfig.off();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .plain, .debug){
         .w = writer, 
         .ctx = "", 
@@ -67,7 +69,8 @@ test "logger print plain" {
     defer arr.deinit();
     const writer = arr.writer();
 
-    const logMan = ziglog.LogManager(.debug, .testMode);
+    const conf = comptime ziglog.LogConfig.testMode();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .plain, .debug){
         .w = writer, 
         .ctx = "", 
@@ -81,7 +84,8 @@ test "logger print json" {
     defer arr.deinit();
     const writer = arr.writer();
 
-    const logMan = ziglog.LogManager(.debug, .testMode);
+    const conf = comptime ziglog.LogConfig.testMode();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
         .w = writer, 
         .ctx = "", 
@@ -98,7 +102,8 @@ test "logger event json str" {
     defer arr.deinit();
     const writer = arr.writer();
 
-    const logMan = ziglog.LogManager(.debug, .testMode);
+    const conf = comptime ziglog.LogConfig.testMode();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
         .w = writer, 
         .ctx = "", 
@@ -116,7 +121,8 @@ test "logger event json str" {
     defer arr.deinit();
     const writer = arr.writer();
 
-    const logMan = ziglog.LogManager(.debug, .testMode);
+    const conf = comptime ziglog.LogConfig.testMode();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
         .w = writer, 
         .ctx = "", 
@@ -143,8 +149,8 @@ test "logger event json num" {
     var arr = std.ArrayList(u8).init(test_allocator);
     defer arr.deinit();
     const writer = arr.writer();
-
-    const logMan = ziglog.LogManager(.debug, .testMode);
+    const conf = comptime ziglog.LogConfig.testMode();
+    const logMan = ziglog.LogManager(conf);
     var logger = logMan.Logger(@TypeOf(writer), .json, .debug){
         .w = writer, 
         .ctx = "", 

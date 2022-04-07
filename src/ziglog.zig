@@ -1,19 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-/// The default log level is based on build mode.
-pub const default_level: LevelType = switch (builtin.mode) {
-    .Debug => .debug,
-    .ReleaseSafe => .info,
-    .ReleaseFast, .ReleaseSmall => .err,
-};
 
-const TimeFormat = enum {
+pub const TimeFormat = enum {
     unixSecs,
     testMode,
 };
 
-const LevelType = enum {
+pub const LevelType = enum {
     off,
     panic,
     fatal,
@@ -34,6 +28,12 @@ const LevelType = enum {
             .trace => "trace"
         };
     }
+    /// The default log level is based on build mode.
+    pub const default: LevelType = switch (builtin.mode) {
+        .Debug => .debug,
+        .ReleaseSafe => .info,
+        .ReleaseFast, .ReleaseSmall => .err,
+    };
 };
 
 pub fn BoundedStr(comptime bufSize: usize) type {
@@ -61,13 +61,41 @@ pub fn BoundedStr(comptime bufSize: usize) type {
     };
 }
 
+pub const LogConfig = struct {
+    globalLogLevel: LevelType,
+    timeFormat: TimeFormat,
+    eventBufSize: usize,
+
+    const Self = @This();
+    pub fn default() Self {
+        return Self{
+            .globalLogLevel = LevelType.default,
+            .timeFormat =  .unixSecs,
+            .eventBufSize =  1000,
+        };
+    }
+    pub fn off() Self {
+        return Self{
+            .globalLogLevel = .off,
+            .timeFormat =  .unixSecs,
+            .eventBufSize =  1000,
+        };
+    }
+    pub fn testMode() Self {
+        return Self{
+            .globalLogLevel = LevelType.default,
+            .timeFormat =  .testMode,
+            .eventBufSize =  1000,
+        };
+    }
+};
+
 pub fn LogManager(
-    comptime globalLogLevel: LevelType,
-    comptime timeFormat: TimeFormat,
+    comptime conf: LogConfig,
 ) type {
     return struct {
         fn getTime() i128 {
-            return switch (timeFormat) {
+            return switch (conf.timeFormat) {
                 .unixSecs => std.time.timestamp(),
                 .testMode => 0,
             };
@@ -77,11 +105,10 @@ pub fn LogManager(
             comptime writerType: type,
             comptime fmtMode: FormatMode,
             comptime logLevel: LevelType,
-            comptime bufSize: usize,
         ) type {
             return struct {
                 w: writerType,
-                buf: BoundedStr(bufSize),
+                buf: BoundedStr(conf.eventBufSize),
                 timeVal: i128,
 
                 const Self = @This();
@@ -91,9 +118,9 @@ pub fn LogManager(
                     var newEvent = Self{
                         .w = writer,
                         .timeVal = timeVal,
-                        .buf = try BoundedStr(bufSize).init(),
+                        .buf = try BoundedStr(conf.eventBufSize).init(),
                     };
-                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return newEvent;
                     };
                     const w = newEvent.buf.writer();
@@ -134,7 +161,7 @@ pub fn LogManager(
                     comptime isNum: bool,
                     args: anytype
                 ) !void {
-                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return;
                     };
                     const w = self.buf.writer();
@@ -172,7 +199,7 @@ pub fn LogManager(
                 /// Send this event to the writer with no message.
                 /// The event should then be discarded.
                 pub fn send(self: *Self) !void {
-                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return;
                     };
                     try self.w.writeAll(self.buf.data.constSlice());
@@ -187,7 +214,7 @@ pub fn LogManager(
                 }
                 /// Send this event to the writer with the given message.
                 pub fn msg(self: *Self, msgStr: []const u8) !void {
-                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return;
                     };
                     switch (fmtMode) {
@@ -244,11 +271,11 @@ pub fn LogManager(
                 pub fn withLevel(
                     self: *Self, 
                     comptime lvl: LevelType
-                ) !Event(writerType, fmtMode, lvl, 1000) {
-                    return Event(writerType, fmtMode, lvl, 1000).new(self.w);
+                ) !Event(writerType, fmtMode, lvl) {
+                    return Event(writerType, fmtMode, lvl).new(self.w);
                 }
                 pub fn print(self: *Self, msg: []const u8) !void {
-                    comptime if (@enumToInt(logLevel) > @enumToInt(globalLogLevel)){
+                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.globalLogLevel)){
                         return;
                     };
                     var event = try self.withLevel(logLevel);
