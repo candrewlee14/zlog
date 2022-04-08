@@ -3,37 +3,37 @@ const builtin = @import("builtin");
 const test_allocator = std.testing.allocator;
 
 // Global logger setup
-const globalLogConf = LogConfig.default();
-const globalLogMan = LogManager(globalLogConf);
-const globalWriter = std.io.getStdErr().writer();
-const loggerDefaultLevel = .debug;
+const log_conf = LogConfig.default();
+const log_man = LogManager(log_conf);
+const default_writer = std.io.getStdErr().writer();
+const default_log_lvl = .debug;
 
-pub var globalJsonLogger = globalLogMan.Logger(@TypeOf(globalWriter), .json, loggerDefaultLevel)
-    .new(globalWriter) catch @panic("Failed to create global JSON logger");
-pub var globalPrettyLogger = globalLogMan.Logger(@TypeOf(globalWriter), .pretty, loggerDefaultLevel)
-    .new(globalWriter) catch @panic("Failed to create global pretty logger");
-pub var globalPlainLogger = globalLogMan.Logger(@TypeOf(globalWriter), .plain, loggerDefaultLevel)
-    .new(globalWriter) catch @panic("Failed to create global plain logger");
+pub var json_logger = log_man.Logger(@TypeOf(default_writer), .json, default_log_lvl)
+    .new(default_writer) catch @panic("Failed to create global JSON logger");
+pub var pretty_logger = log_man.Logger(@TypeOf(default_writer), .pretty, default_log_lvl)
+    .new(default_writer) catch @panic("Failed to create global pretty logger");
+pub var plain_logger = log_man.Logger(@TypeOf(default_writer), .plain, default_log_lvl)
+    .new(default_writer) catch @panic("Failed to create global plain logger");
 
 /// Term Colors
-pub const tc = struct {
-    pub const Red = "\x1b[31m";
-    pub const Yellow = "\x1b[33m";
-    pub const Green = "\x1b[32m";
-    pub const Gray = "\x1b[90m";
-    pub const Blue = "\x1b[34m";
-    pub const Magenta = "\x1b[35m";
-    pub const Cyan = "\x1b[36m";
-    pub const White = "\x1b[37m";
-    pub const Reset = "\x1b[0m";
+pub const TermColor = struct {
+    pub const red = "\x1b[31m";
+    pub const yellow = "\x1b[33m";
+    pub const green = "\x1b[32m";
+    pub const gray = "\x1b[90m";
+    pub const blue = "\x1b[34m";
+    pub const magenta = "\x1b[35m";
+    pub const cyan = "\x1b[36m";
+    pub const white = "\x1b[37m";
+    pub const reset = "\x1b[0m";
 };
 
 /// Format for writing the time.
-/// .unixSecs - example: 1680183
-/// .testMode - always 0
+/// .unix_secs - example: 1680183
+/// .test_mode - always 0
 pub const TimeFormat = enum {
-    unixSecs,
-    testMode,
+    unix_secs,
+    test_mode,
 };
 
 /// Mode for log formats.
@@ -92,19 +92,19 @@ pub const LevelType = enum {
 };
 
 /// A wrapper around std.BoundedArray with an added writer interface
-pub fn BoundedStr(comptime bufSize: usize) type {
+fn BoundedStr(comptime buf_size: usize) type {
     return struct {
         const Self = @This();
-        data: std.BoundedArray(u8, bufSize),
+        data: std.BoundedArray(u8, buf_size),
 
         const Writer = std.io.Writer(
             *Self,
             error{EndOfBuffer},
             appendWrite,
         );
-        pub fn init() !Self {
+        fn init() !Self {
             return Self{
-                .data = try std.BoundedArray(u8, bufSize).init(0),
+                .data = try std.BoundedArray(u8, buf_size).init(0),
             };
         }
         fn appendWrite(self: *Self, str: []const u8) error{EndOfBuffer}!usize {
@@ -121,33 +121,33 @@ pub fn BoundedStr(comptime bufSize: usize) type {
 /// Log Config type.
 /// Passed into LogManager function.
 pub const LogConfig = struct {
-    logLevelFilter: LevelType,
-    timeFormat: TimeFormat,
-    eventBufSize: usize,
+    min_log_lvl: LevelType,
+    time_fmt: TimeFormat,
+    buf_size: usize,
 
     const Self = @This();
     /// Default log config
     pub fn default() Self {
         return Self{
-            .logLevelFilter = LevelType.default,
-            .timeFormat = .unixSecs,
-            .eventBufSize = 1000,
+            .min_log_lvl = LevelType.default,
+            .time_fmt = .unix_secs,
+            .buf_size = 1000,
         };
     }
     /// Global log level is off, so nothing should be logged
     pub fn off() Self {
         return Self{
-            .logLevelFilter = .off,
-            .timeFormat = .unixSecs,
-            .eventBufSize = 1000,
+            .min_log_lvl = .off,
+            .time_fmt = .unix_secs,
+            .buf_size = 1000,
         };
     }
     /// Test mode where time values are all 0 
     pub fn testMode() Self {
         return Self{
-            .logLevelFilter = LevelType.default,
-            .timeFormat = .testMode,
-            .eventBufSize = 1000,
+            .min_log_lvl = LevelType.default,
+            .time_fmt = .test_mode,
+            .buf_size = 1000,
         };
     }
 };
@@ -158,98 +158,98 @@ pub fn LogManager(
     comptime conf: LogConfig,
 ) type {
     return struct {
-        /// Get current time depending on the LogConfig's timeFormat.
+        /// Get current time depending on the LogConfig's time_fmt.
         fn getTime() i128 {
-            return switch (conf.timeFormat) {
-                .unixSecs => std.time.timestamp(),
-                .testMode => 0,
+            return switch (conf.time_fmt) {
+                .unix_secs => std.time.timestamp(),
+                .test_mode => 0,
             };
         }
 
         /// Events write the logs.
         /// Add fields to the event, then send the log with send(), msg("foo"), or msgf("foo", .{}).
         pub fn Event(
-            comptime writerType: type,
-            comptime fmtMode: FormatMode,
-            comptime logLevel: LevelType,
+            comptime WriterType: type,
+            comptime fmt_mode: FormatMode,
+            comptime log_lvl: LevelType,
         ) type {
             return struct {
-                w: writerType,
-                buf: BoundedStr(conf.eventBufSize),
-                timeVal: i128,
+                w: WriterType,
+                buf: BoundedStr(conf.buf_size),
+                time_val: i128,
 
                 const Self = @This();
                 /// Creates new Event with current time
-                fn new(writer: writerType) !Self {
+                fn new(writer: WriterType) !Self {
                     var newEvent = Self{
                         .w = writer,
-                        .timeVal = undefined,
+                        .time_val = undefined,
                         .buf = undefined,
                     };
                     // Filter out lower log levels
-                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.logLevelFilter) or (logLevel == .off)) {
+                    comptime if (@enumToInt(log_lvl) > @enumToInt(conf.min_log_lvl) or (log_lvl == .off)) {
                         return newEvent;
                     };
-                    const timeVal = getTime();
-                    newEvent.timeVal = timeVal;
-                    newEvent.buf = try BoundedStr(conf.eventBufSize).init();
+                    const time_val = getTime();
+                    newEvent.time_val = time_val;
+                    newEvent.buf = try BoundedStr(conf.buf_size).init();
                     const w = newEvent.buf.writer();
-                    switch (fmtMode) {
+                    switch (fmt_mode) {
                         .json => {
                             try w.writeAll("{");
-                            try w.print("\"time\":{}", .{timeVal});
+                            try w.print("\"time\":{}", .{time_val});
                             try w.writeAll(
-                                ",\"level\":\"" ++ logLevel.asText() ++ "\"",
+                                ",\"level\":\"" ++ log_lvl.asText() ++ "\"",
                             );
                         },
                         .pretty => {
-                            try w.print(tc.Gray ++ "{} " ++ tc.Reset, .{timeVal});
-                            const lvlStr = switch (logLevel) {
-                                .panic, .fatal, .err => tc.Red,
-                                .warn => tc.Yellow,
-                                .info => tc.Green,
-                                .debug => tc.Magenta,
-                                .trace => tc.Cyan,
+                            try w.print(TermColor.gray ++ "{} " ++ TermColor.reset, .{time_val});
+                            const lvlStr = switch (log_lvl) {
+                                .panic, .fatal, .err => TermColor.red,
+                                .warn => TermColor.yellow,
+                                .info => TermColor.green,
+                                .debug => TermColor.magenta,
+                                .trace => TermColor.cyan,
                                 else => "",
-                            } ++ logLevel.as3Char() ++ tc.Reset;
+                            } ++ log_lvl.as3Char() ++ TermColor.reset;
                             try w.writeAll(lvlStr);
                         },
                         .plain => {
-                            try w.print("{} ", .{timeVal});
-                            try w.writeAll(logLevel.as3Char());
+                            try w.print("{} ", .{time_val});
+                            try w.writeAll(log_lvl.as3Char());
                         },
                     }
                     return newEvent;
                 }
 
                 /// Add a key:value pair to this event
-                /// noQuotes will remove the quotes around JSON in the case of a num/bool
+                /// no_quotes will remove the quotes around JSON in the case of a num/bool
                 /// NOTE: must use msg, msgf, or send methods to dispatch log
-                pub fn add(self: *Self, key: []const u8, comptime valFmtStr: []const u8, comptime noQuotes: bool, args: anytype) !void {
+                pub fn add(self: *Self, key: []const u8, comptime fmt_str: []const u8, comptime no_quotes: bool, args: anytype) !void {
                     // Filter out lower log levels
-                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.logLevelFilter) or (logLevel == .off)) {
+                    comptime if (@enumToInt(log_lvl) > @enumToInt(conf.min_log_lvl) or (log_lvl == .off)) {
                         return;
                     };
                     const w = self.buf.writer();
                     // const w = self.w;
-                    switch (fmtMode) {
+                    switch (fmt_mode) {
                         .json => {
                             try w.print(",\"{s}\":", .{key});
-                            if (!noQuotes) {
+                            if (!no_quotes) {
                                 try w.writeAll("\"");
                             }
-                            try w.print(valFmtStr, args);
-                            if (!noQuotes) {
+                            try w.print(fmt_str, args);
+                            if (!no_quotes) {
                                 try w.writeAll("\"");
                             }
                         },
                         .plain => {
                             try w.print(" {s}=", .{key});
-                            try w.print(valFmtStr, args);
+                            try w.print(fmt_str, args);
                         },
                         .pretty => {
-                            try w.print(tc.Gray ++ " {s}=" ++ tc.Reset, .{key});
-                            try w.print(valFmtStr, args);
+                            try w.print(TermColor.gray ++ " {s}=" ++ TermColor.reset, .{key});
+                            try w.print(fmt_str, args);
                         },
                     }
                 }
@@ -260,8 +260,8 @@ pub fn LogManager(
                 }
                 /// Add key:str pair to event using format string with value struct.
                 /// NOTE: must use msg, msgf, or send methods to dispatch log
-                pub fn strf(self: *Self, key: []const u8, comptime fmtStr: []const u8, val: anytype) !void {
-                    try self.add(key, fmtStr, false, val);
+                pub fn strf(self: *Self, key: []const u8, comptime fmt_str: []const u8, val: anytype) !void {
+                    try self.add(key, fmt_str, false, val);
                 }
                 /// Add key:num pair to ev.
                 /// NOTE: must use msg, msgf, or send methods to dispatch log
@@ -285,11 +285,11 @@ pub fn LogManager(
                 /// The event should then be discarded.
                 pub fn send(self: *Self) !void {
                     // Filter out lower log levels
-                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.logLevelFilter) or (logLevel == .off)) {
+                    comptime if (@enumToInt(log_lvl) > @enumToInt(conf.min_log_lvl) or (log_lvl == .off)) {
                         return;
                     };
                     try self.w.writeAll(self.buf.data.constSlice());
-                    switch (fmtMode) {
+                    switch (fmt_mode) {
                         .json => {
                             try self.w.writeAll("}\n");
                         },
@@ -300,15 +300,15 @@ pub fn LogManager(
                 }
                 /// Send this event to the writer with the given message.
                 /// The event should then be discarded.
-                pub fn msg(self: *Self, msgStr: []const u8) !void {
-                    try self.str("message", msgStr);
+                pub fn msg(self: *Self, msg_str: []const u8) !void {
+                    try self.str("message", msg_str);
                     try self.send();
                 }
                 /// Send this event to the writer with a message from 
                 /// a format string and args struct.
                 /// The event should then be discarded.
-                pub fn msgf(self: *Self, comptime fmtStr: []const u8, args: anytype) !void {
-                    try self.strf("message", fmtStr, args);
+                pub fn msgf(self: *Self, comptime fmt_str: []const u8, args: anytype) !void {
+                    try self.strf("message", fmt_str, args);
                     try self.send();
                 }
             };
@@ -316,65 +316,65 @@ pub fn LogManager(
 
         /// Loggers hold a context, and they create log Events to write logs
         pub fn Logger(
-            comptime writerType: type,
-            comptime fmtMode: FormatMode,
-            comptime logLevel: LevelType,
+            comptime WriterType: type,
+            comptime fmt_mode: FormatMode,
+            comptime log_lvl: LevelType,
         ) type {
             return struct {
-                w: writerType,
-                ctx: BoundedStr(conf.eventBufSize),
+                w: WriterType,
+                ctx: BoundedStr(conf.buf_size),
 
                 const Self = @This();
                 /// Create new logger
-                pub fn new(w: writerType) !Self {
+                pub fn new(w: WriterType) !Self {
                     return Self{
                         .w = w,
-                        .ctx = try BoundedStr(conf.eventBufSize).init(),
+                        .ctx = try BoundedStr(conf.buf_size).init(),
                     };
                 }
                 /// Return current logger log level
                 pub fn getLevel() LevelType {
-                    return logLevel;
+                    return log_lvl;
                 }
                 /// Returns a sublogger at the given log level
                 pub fn sublogger(
                     self: *Self,
                     comptime lvl: LevelType,
-                ) !Logger(writerType, fmtMode, lvl) {
-                    var newCtx = try BoundedStr(conf.eventBufSize).init();
+                ) !Logger(WriterType, fmt_mode, lvl) {
+                    var newCtx = try BoundedStr(conf.buf_size).init();
                     try newCtx.writer().writeAll(self.ctx.data.constSlice());
-                    return Logger(writerType, fmtMode, lvl){
+                    return Logger(WriterType, fmt_mode, lvl){
                         .w = self.w,
                         .ctx = newCtx,
                     };
                 }
                 /// Add a key:value pair context to this logger
-                /// noQuotes will remove the quotes around JSON in the case of a num/bool
+                /// no_quotes will remove the quotes around JSON in the case of a num/bool
                 /// NOTE: must use msg, msgf, or send methods to dispatch log
-                fn addCtx(self: *Self, key: []const u8, comptime valFmtStr: []const u8, comptime noQuotes: bool, args: anytype) !void {
+                fn addCtx(self: *Self, key: []const u8, comptime fmt_str: []const u8, comptime no_quotes: bool, args: anytype) !void {
                     // Filter out lower log levels
-                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.logLevelFilter) or (logLevel == .off)) {
+                    comptime if (@enumToInt(log_lvl) > @enumToInt(conf.min_log_lvl) or (log_lvl == .off)) {
                         return;
                     };
                     const w = self.ctx.writer();
-                    switch (fmtMode) {
+                    switch (fmt_mode) {
                         .json => {
                             try w.print(",\"{s}\":", .{key});
-                            if (!noQuotes) {
+                            if (!no_quotes) {
                                 try w.writeAll("\"");
                             }
-                            try w.print(valFmtStr, args);
-                            if (!noQuotes) {
+                            try w.print(fmt_str, args);
+                            if (!no_quotes) {
                                 try w.writeAll("\"");
                             }
                         },
                         .plain => {
                             try w.print(" {s}=", .{key});
-                            try w.print(valFmtStr, args);
+                            try w.print(fmt_str, args);
                         },
                         .pretty => {
-                            try w.print(tc.Gray ++ " {s}=" ++ tc.Reset, .{key});
-                            try w.print(valFmtStr, args);
+                            try w.print(TermColor.gray ++ " {s}=" ++ TermColor.reset, .{key});
+                            try w.print(fmt_str, args);
                         },
                     }
                 }
@@ -395,18 +395,18 @@ pub fn LogManager(
                     try self.addCtx(key, "{s}", false, .{val});
                 }
                 /// Returns an event that at the given log level 
-                pub fn event(self: *Self, comptime lvl: LevelType) !Event(writerType, fmtMode, lvl) {
-                    var newEvent = try Event(writerType, fmtMode, lvl).new(self.w);
+                pub fn event(self: *Self, comptime lvl: LevelType) !Event(WriterType, fmt_mode, lvl) {
+                    var newEvent = try Event(WriterType, fmt_mode, lvl).new(self.w);
                     try newEvent.buf.writer().writeAll(self.ctx.data.constSlice());
                     return newEvent;
                 }
                 /// Log a message at this logger's level
                 pub fn print(self: *Self, msg: []const u8) !void {
                     // Filter out lower log levels
-                    comptime if (@enumToInt(logLevel) > @enumToInt(conf.logLevelFilter) or (logLevel == .off)) {
+                    comptime if (@enumToInt(log_lvl) > @enumToInt(conf.min_log_lvl) or (log_lvl == .off)) {
                         return;
                     };
-                    var ev = try self.event(logLevel);
+                    var ev = try self.event(log_lvl);
                     try ev.msg(msg);
                 }
             };

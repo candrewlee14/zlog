@@ -29,8 +29,8 @@ Now you can import and use `zlog`!
 For simple logging, import a global logger
 ```zig
 const zlog = @import("zlog");
-const log = &zlog.globalJsonLogger;
-// You could also use globalPrettyLogger, globalPlainLogger 
+const log = &zlog.json_logger;
+// You could also use pretty_logger, plain_logger 
 
 pub fn main() anyerror!void {
     try log.print("Hello!");
@@ -52,7 +52,7 @@ Then the `msg`, `msgf`, or `send` method will write the event to the log.
 
 ```zig
 const zlog = @import("zlog");
-const log = &zlog.globalJsonLogger;
+const log = &zlog.json_logger;
 
 pub fn main() anyerror!void {
     var ev = try log.event(.debug);
@@ -73,7 +73,7 @@ You can also create subloggers that use the parent logger's context along with t
 
 ```zig
 const zlog = @import("zlog");
-const log = &zlog.globalJsonLogger;
+const log = &zlog.json_logger;
 
 pub fn main() anyerror!void {
     try log.strCtx("component", "foo");
@@ -115,21 +115,21 @@ const std = @import("std");
 const zlog = @import("zlog");
 
 // setting global log configuration
-const logConf = zlog.LogConfig{
-    .logLevelFilter = .info, // lowest allowed log level
-    .timeFormat = .unixSecs, // format to print the time
-    .eventBufSize = 1000, // buffer size for events, 1000 is the default
+const log_conf = zlog.LogConfig{
+    .min_log_lvl = .trace, // lowest shown log level
+    .time_fmt = .unix_secs, // format to print the time
+    .buf_size = 1000, // buffer size for events, 1000 is the default
 };
 // creating a log manager with the set config
-const logMan = zlog.LogManager(logConf);
+const log_man = zlog.LogManager(log_conf);
 // choosing a default writer to write logs into
-const logWriter = std.io.getStdErr().writer();
+const log_writer = std.io.getStdErr().writer();
 // choosing a default log level for the logger
-const loggerDefaultLevel = .info;
+const default_log_lvl = .info;
 
 // Creating the logger
-var log = logMan.Logger(@TypeOf(logWriter), .json, loggerDefaultLevel)
-    .new(logWriter) catch @panic("Failed to create global JSON logger");
+var log = log_man.Logger(@TypeOf(log_writer), .json, default_log_lvl)
+    .new(log_writer) catch @panic("Failed to create global JSON logger");
 
 pub fn main() anyerror!void {
     var ev = try log.event(.debug);
