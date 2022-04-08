@@ -1,6 +1,8 @@
 # zlog
 A [zerolog](https://github.com/rs/zerolog)-inspired log library for Zig.
 
+![Pretty Logging Image](prettyLog.png)
+
 ## Features
  - Blazing fast
  - Zero allocations
@@ -27,7 +29,7 @@ Now you can import and use `zlog`!
 For simple logging, import a global logger
 ```zig
 const zlog = @import("zlog");
-const log= &zlog.globalJsonLogger;
+const log = &zlog.globalJsonLogger;
 // You could also use globalPrettyLogger, globalPlainLogger 
 
 pub fn main() anyerror!void {
@@ -62,8 +64,8 @@ pub fn main() anyerror!void {
     try ev2.str("Name", "Tom");
     try ev2.send();
 }
-// Output: {"level":"debug","Scale":"833 cents","Interval":833.09,"time":1562212768,"message":"Fibonacci is everywhere"}
-// Output: {"level":"debug","Name":"Tom","time":1562212768}
+// Output: {"time":1649450646,"level":"debug","Scale":"833 cents","Interval":833.09,"message":"Fibonacci is everywhere"}
+// Output: {"time":1649450646,"level":"debug","Name":"Tom"}
 ```
 
 You can add context to a logger so that every event it creates also has that context.
@@ -80,14 +82,14 @@ pub fn main() anyerror!void {
     try ev.msg("hello world");
 
     // create sublogger, bringing along log's context 
-    var sublog = log.sublogger(.info);
-    try log.numCtx("num", 10);
+    var sublog = try log.sublogger(.info);
+    try sublog.numCtx("num", 10);
 
     var ev2 = try sublog.event(.debug);
     try ev2.msg("hey there");
 }
-// Output: {"level":"info","time":1494567715,"component":"foo","message":"hello world"}
-// Output: {"level":"info","time":1494567715,"component":"foo","num":10, "message":"hello world"}
+// Output: {"time":1649450791,"level":"info","component":"foo","message":"hello world"}
+// Output: {"time":1649450791,"level":"debug","component":"foo","num":10,"message":"hey there"}
 ```
 
 ### Leveled Logging
@@ -109,10 +111,11 @@ To disable logging entirely, set the global log level filter to `.off`;
 #### Setting Global Log Level Filter
 
 ```zig
+const std = @import("std");
 const zlog = @import("zlog");
 
 // setting global log configuration
-const logConf = zlog.LogConfig.default();
+const logConf = zlog.LogConfig{
     .logLevelFilter = .info, // lowest allowed log level
     .timeFormat = .unixSecs, // format to print the time
     .eventBufSize = 1000, // buffer size for events, 1000 is the default
@@ -138,4 +141,6 @@ pub fn main() anyerror!void {
     try ev2.str("Name", "Tom");
     try ev2.send();
 }
+// Output: {"time":1649450953,"level":"debug","Scale":"833 cents","Interval":833.09,"message":"Fibonacci is everywhere"}
+// Output: {"time":1649450953,"level":"debug","Name":"Tom"}
 ```
