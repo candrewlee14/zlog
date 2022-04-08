@@ -1,4 +1,4 @@
-# zlog
+# zlog - Zero-Allocation Logging
 A [zerolog](https://github.com/rs/zerolog)-inspired log library for Zig.
 
 ![Pretty Logging Image](prettyLog.png)
@@ -37,12 +37,12 @@ pub fn main() anyerror!void {
 }
 // Output: {"time":1516134303,"level":"debug","message":"hello world"}
 ```
-**Note:** By default, log writes to StdErr at the log level of `.debug`
-
-**Note:** The default log level **global filter** depends on the build mode:
-- .Debug => .debug
-- .ReleaseSafe => .info
-- .ReleaseFast, .ReleaseSmall => .warn
+> **Note:** By default, log writes to StdErr at the log level of `.debug`
+> 
+> The default log level **global filter** depends on the build mode:
+> - .Debug => .debug
+> - .ReleaseSafe => .info
+> - .ReleaseFast, .ReleaseSmall => .warn
 
 ### Contextual Logging
 Loggers create events, which do the log writing.
