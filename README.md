@@ -6,13 +6,27 @@ A [zerolog](https://github.com/rs/zerolog)-inspired log library for Zig.
  - Zero allocations
  - Leveled logging
  - Contextual logging 
- - JSON & Pretty logging formats
+ - JSON, Plain, and Pretty logging formats
 
 ## Getting Started
+
+Copy `zlog` folder to a `libs` subdirectory of the root of your project.
+Then in your `build.zig` add:
+```zig
+const std = @import("std");
+const zmath = @import("libs/zlog/build.zig");
+
+pub fn build(b: *std.build.Builder) void {
+    ...
+    exe.addPackage(zlog.pkg);
+}
+```
+Now you can import and use `zlog`!
+
 ### Simple Logging Example
 For simple logging, import a global logger
 ```zig
-const zlog = @import("zlog.zig");
+const zlog = @import("zlog");
 const log= &zlog.globalJsonLogger;
 // You could also use globalPrettyLogger, globalPlainLogger 
 
@@ -35,7 +49,7 @@ Then the `msg`, `msgf`, or `send` method will write the event to the log.
 **Note:** Without calling any of those 3 methods, the log will not be written.
 
 ```zig
-const zlog = @import("zlog.zig");
+const zlog = @import("zlog");
 const log = &zlog.globalJsonLogger;
 
 pub fn main() anyerror!void {
@@ -56,7 +70,7 @@ You can add context to a logger so that every event it creates also has that con
 You can also create subloggers that use the parent logger's context along with their own context.
 
 ```zig
-const zlog = @import("zlog.zig");
+const zlog = @import("zlog");
 const log = &zlog.globalJsonLogger;
 
 pub fn main() anyerror!void {
@@ -95,7 +109,7 @@ To disable logging entirely, set the global log level filter to `.off`;
 #### Setting Global Log Level Filter
 
 ```zig
-const zlog = @import("zlog.zig");
+const zlog = @import("zlog");
 
 // setting global log configuration
 const logConf = zlog.LogConfig.default();

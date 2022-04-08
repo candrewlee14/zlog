@@ -314,7 +314,6 @@ pub fn LogManager(
             };
         }
 
-
         /// Loggers hold a context, and they create log Events to write logs
         pub fn Logger(
             comptime writerType: type,
@@ -541,7 +540,7 @@ test "logger event json boolean" {
     const logMan = LogManager(conf);
     var logger = try logMan.Logger(@TypeOf(writer), .json, .debug).new(writer);
     var i: u8 = 100 / 2;
-    var ev= try logger.event(.debug);
+    var ev = try logger.event(.debug);
     try ev.str("Hey", "This is a field");
     try ev.str("Hey2", "This is also a field");
     try ev.num("Value1", 10);
@@ -584,7 +583,7 @@ test "logger event json boolean, with context" {
     try logger.booleanCtx("Ctx2", true);
     try logger.numCtx("Ctx3", 14.3);
     var i: u8 = 100 / 2;
-    var ev= try logger.event(.debug);
+    var ev = try logger.event(.debug);
     try ev.str("Hey", "This is a field");
     try ev.str("Hey2", "This is also a field");
     try ev.num("Value1", 10);
