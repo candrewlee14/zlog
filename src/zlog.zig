@@ -91,33 +91,6 @@ pub const LevelType = enum {
     };
 };
 
-/// A wrapper around std.BoundedArray with an added writer interface
-fn BoundedStr(comptime buf_size: usize) type {
-    return struct {
-        const Self = @This();
-        data: std.BoundedArray(u8, buf_size),
-
-        const Writer = std.io.Writer(
-            *Self,
-            error{EndOfBuffer},
-            appendWrite,
-        );
-        fn init() !Self {
-            return Self{
-                .data = try std.BoundedArray(u8, buf_size).init(0),
-            };
-        }
-        fn appendWrite(self: *Self, str: []const u8) error{EndOfBuffer}!usize {
-            self.data.appendSlice(str) catch return error.EndOfBuffer;
-            return str.len;
-        }
-        /// Get writer for BoundedStr
-        fn writer(self: *Self) Writer {
-            return .{ .context = self };
-        }
-    };
-}
-
 /// Log Config type.
 /// Passed into LogManager function.
 pub const LogConfig = struct {
@@ -175,7 +148,7 @@ pub fn LogManager(
         ) type {
             return struct {
                 w: WriterType,
-                buf: BoundedStr(conf.buf_size),
+                buf: std.BoundedArray(u8, conf.buf_size),
                 time_val: i128,
 
                 const Self = @This();
@@ -192,7 +165,7 @@ pub fn LogManager(
                     };
                     const time_val = getTime();
                     newEvent.time_val = time_val;
-                    newEvent.buf = try BoundedStr(conf.buf_size).init();
+                    newEvent.buf = try std.BoundedArray(u8, conf.buf_size).init(0);
                     const w = newEvent.buf.writer();
                     switch (fmt_mode) {
                         .json => {
@@ -288,7 +261,7 @@ pub fn LogManager(
                     comptime if (@enumToInt(log_lvl) > @enumToInt(conf.min_log_lvl) or (log_lvl == .off)) {
                         return;
                     };
-                    try self.w.writeAll(self.buf.data.constSlice());
+                    try self.w.writeAll(self.buf.constSlice());
                     switch (fmt_mode) {
                         .json => {
                             try self.w.writeAll("}\n");
@@ -322,14 +295,14 @@ pub fn LogManager(
         ) type {
             return struct {
                 w: WriterType,
-                ctx: BoundedStr(conf.buf_size),
+                ctx: std.BoundedArray(u8, conf.buf_size),
 
                 const Self = @This();
                 /// Create new logger
                 pub fn new(w: WriterType) !Self {
                     return Self{
                         .w = w,
-                        .ctx = try BoundedStr(conf.buf_size).init(),
+                        .ctx = try std.BoundedArray(u8, conf.buf_size).init(0),
                     };
                 }
                 /// Return current logger log level
@@ -341,8 +314,8 @@ pub fn LogManager(
                     self: *Self,
                     comptime lvl: LevelType,
                 ) !Logger(WriterType, fmt_mode, lvl) {
-                    var newCtx = try BoundedStr(conf.buf_size).init();
-                    try newCtx.writer().writeAll(self.ctx.data.constSlice());
+                    var newCtx = try std.BoundedArray(u8, conf.buf_size).init(0);
+                    try newCtx.writer().writeAll(self.ctx.constSlice());
                     return Logger(WriterType, fmt_mode, lvl){
                         .w = self.w,
                         .ctx = newCtx,
@@ -397,7 +370,7 @@ pub fn LogManager(
                 /// Returns an event that at the given log level 
                 pub fn event(self: *Self, comptime lvl: LevelType) !Event(WriterType, fmt_mode, lvl) {
                     var newEvent = try Event(WriterType, fmt_mode, lvl).new(self.w);
-                    try newEvent.buf.writer().writeAll(self.ctx.data.constSlice());
+                    try newEvent.buf.writer().writeAll(self.ctx.constSlice());
                     return newEvent;
                 }
                 /// Log a message at this logger's level
