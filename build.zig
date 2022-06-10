@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const pkg = std.build.Pkg{
     .name = "zlog",
-    .path = .{ .path = thisDir() ++ "/src/zlog.zig" },
+    .path = .{ .source = thisDir() ++ "/src/zlog.zig" },
 };
 
 pub fn build(b: *std.build.Builder) void {
