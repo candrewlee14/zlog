@@ -16,7 +16,7 @@ Copy `zlog` folder to a `libs` subdirectory of the root of your project.
 Then in your `build.zig` add:
 ```zig
 const std = @import("std");
-const zmath = @import("libs/zlog/build.zig");
+const zlog = @import("libs/zlog/build.zig");
 
 pub fn build(b: *std.build.Builder) void {
     ...
